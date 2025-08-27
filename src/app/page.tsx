@@ -99,7 +99,6 @@ function LoginContent() {
 
   <span className="sr-only">GitHub</span>
 </a>
-g
       <p>By Asynccccc</p>
       
       {forceNewLogin && (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image"; // Add this import
 import { supabase } from "@/lib/supabaseClient";
 import { UserMetadata } from '@supabase/supabase-js';
 
@@ -15,6 +16,18 @@ interface Track {
     name: string;
     artist: string;
     albumImage: string;
+}
+
+interface SpotifyArtist {
+    id: string;
+    name: string;
+}
+
+interface SpotifyTrack {
+    id: string;
+    name: string;
+    artists: Array<{ name: string }>;
+    album: { images: Array<{ url: string }> };
 }
 
 export default function ResultPage() {
@@ -42,7 +55,7 @@ export default function ResultPage() {
         const aRes = await fetch("https://api.spotify.com/v1/me/top/artists?limit=5&time_range=medium_term", { headers });
         if (!aRes.ok) throw new Error("Failed to fetch top artists");
         const aJson = await aRes.json();
-        const topArtists = (aJson?.items ?? []).map((a: any) => ({
+        const topArtists = (aJson?.items ?? []).map((a: SpotifyArtist) => ({
             id: a.id,
             name: a.name
         }));
@@ -50,7 +63,7 @@ export default function ResultPage() {
         const tRes = await fetch("https://api.spotify.com/v1/me/top/tracks?limit=5&time_range=short_term", { headers });
         if (!tRes.ok) throw new Error("Failed to fetch top tracks");
         const tJson = await tRes.json();
-        const topTracks = (tJson?.items ?? []).map((t : any) => ({
+        const topTracks = (tJson?.items ?? []).map((t: SpotifyTrack) => ({
           id: t.id,
           name: t.name,
           artist: t.artists?.[0]?.name ?? "",
@@ -67,7 +80,6 @@ export default function ResultPage() {
         });
         const { text } = await resp.json();
 
-        // typing animation
         let i = 0;
         const tick = () => {
           if (i <= text.length) {
@@ -77,8 +89,12 @@ export default function ResultPage() {
         };
         setDisplayed("");
         setTimeout(tick, 250);
-      } catch (e: any) {
-        setError(e?.message ?? "Unexpected error");
+      } catch (e) {
+        if (e instanceof Error) {
+          setError(e.message);
+        } else {
+          setError("Unexpected error");
+        }
       } finally {
         setLoading(false);
       }
@@ -118,7 +134,13 @@ export default function ResultPage() {
         <section className="grid md:grid-cols-[160px,1fr] gap-6 md:gap-10 items-start">
           <div>
             {tracks?.[0]?.albumImage
-              ? <img src={tracks[0].albumImage} alt="" className="w-40 h-40 object-cover rounded" />
+              ? <Image
+                  src={tracks[0].albumImage} 
+                  alt="Album cover" 
+                  width={160}
+                  height={160}
+                  className="w-40 h-40 object-cover rounded"
+                />
               : <div className="w-40 h-40 bg-white/10 rounded grid place-items-center">🎧</div>}
           </div>
           <div>

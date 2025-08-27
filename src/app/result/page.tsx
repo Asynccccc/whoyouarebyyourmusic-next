@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image"; // Add this import
+import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import { UserMetadata } from '@supabase/supabase-js';
 
@@ -34,9 +34,10 @@ export default function ResultPage() {
   const router = useRouter();
   const [userMeta, setUserMeta] = useState<UserMetadata | null>(null);
   const [artists, setArtists] = useState<Artist[]>([]);
-  const [tracks, setTracks] = useState<Track[]>([]);
   const [displayed, setDisplayed] = useState("");
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -58,7 +59,9 @@ export default function ResultPage() {
                 const accessToken = session.provider_token;
                 if (!accessToken) throw new Error("Missing Spotify aaccess token. Please log in again");
 
-                await fetchSpotifyData(accessToken)
+                await fetchSpotifyData(accessToken);
+
+                await generatePersonalityAnalysis();
             }
         } catch (e) {
             if (e instanceof Error) {
@@ -126,6 +129,33 @@ export default function ResultPage() {
         setError('Failed to fetch your Spotify Data');
     }
   };
+
+  const generatePersonalityAnalysis = async () => {
+    try {
+        if (artists.length === 0 || tracks.length === 0) return;
+
+        const response = await fetch('/api/personality', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                topArtists: artists,
+                topTracks: tracks
+            }),
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            setDisplayed(data.text);
+        } else {
+            setDisplayed("Couldn't generate personality analysis at this time.");
+        }
+    } catch (error) {
+        console.error('Error generating personality analysis:', error);
+        setDisplayed("Error generating your music personality.");
+    }
+  }
 
   const logOut = async () => {
     await supabase.auth.signOut();

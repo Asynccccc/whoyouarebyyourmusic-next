@@ -40,65 +40,46 @@ export default function ResultPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    (async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        if (!session) return router.replace("/");
+    let mounted = true;
 
-        setUserMeta(session.user?.user_metadata ?? null);
-        const accessToken = session.provider_token;
-        if (!accessToken) throw new Error("Missing Spotify access token. Please log in again.");
+    const init = async () => {
+        try{
+            const { data: { session }, error } = await supabase.auth.getSession();
+            if (error) throw error;
 
-        const headers = { Authorization: `Bearer ${accessToken}` };
+            if (!session) {
+                router.replace("/");
+                return;
+            }
 
-        const aRes = await fetch("https://api.spotify.com/v1/me/top/artists?limit=5&time_range=medium_term", { headers });
-        if (!aRes.ok) throw new Error("Failed to fetch top artists");
-        const aJson = await aRes.json();
-        const topArtists = (aJson?.items ?? []).map((a: SpotifyArtist) => ({
-            id: a.id,
-            name: a.name
-        }));
+            if (mounted) {
+                setUserMeta(session.user?.user_metadata ?? null);
 
-        const tRes = await fetch("https://api.spotify.com/v1/me/top/tracks?limit=5&time_range=short_term", { headers });
-        if (!tRes.ok) throw new Error("Failed to fetch top tracks");
-        const tJson = await tRes.json();
-        const topTracks = (tJson?.items ?? []).map((t: SpotifyTrack) => ({
-          id: t.id,
-          name: t.name,
-          artist: t.artists?.[0]?.name ?? "",
-          albumImage: t.album?.images?.[0]?.url ?? ""
-        }));
-
-        setArtists(topArtists);
-        setTracks(topTracks);
-
-        const resp = await fetch("/api/personality", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ topArtists, topTracks }),
-        });
-        const { text } = await resp.json();
-
-        let i = 0;
-        const tick = () => {
-          if (i <= text.length) {
-            setDisplayed(text.slice(0, i++));
-            setTimeout(tick, 18);
-          }
-        };
-        setDisplayed("");
-        setTimeout(tick, 250);
-      } catch (e) {
-        if (e instanceof Error) {
-          setError(e.message);
-        } else {
-          setError("Unexpected error");
+                const accessToken = session.provider_token;
+                if (!accessToken) throw new Error("Missing Spotify aaccess token. Please log in again");
+            }
+        } catch (e) {
+            if (e instanceof Error) setError(e.message);
+            else setError("Unexpected error");
+        } finally {
+            if (mounted) setLoading(false);
         }
-      } finally {
-        setLoading(false);
-      }
-    })();
+    };
+
+    init ()
+
+    const {data: listener} = supabase.auth.onAuthStateChange((_event, session) => {
+        if (!session) {
+            router.replace("/");
+        } else {
+            setUserMeta(session.user?.user_metadata ?? null);
+        }
+    });
+
+    return () => {
+        mounted = false;
+        listener.subscription.unsubscribe();
+    };
   }, [router]);
 
   const logOut = async () => {

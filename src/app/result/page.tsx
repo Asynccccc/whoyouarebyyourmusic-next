@@ -164,19 +164,32 @@ export default function ResultPage() {
   };
 
   const logOut = async () => {
+    try {
     // Clear the session completely
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+
+    router.push("/");
+    router.refresh();     
+    } catch (error) {
+      console.error('Error logging out:', error);
+      window.location.href = "/";
+    }
     
-    // Force a full page reload to clear any cached state
-    window.location.href = "/?force_login=true";
   };
 
   const switchAccount = async () => {
-    // Clear the session completely
-    await supabase.auth.signOut();
-    
-    // Add a parameter to indicate we want to force account selection
-    window.location.href = "/?force_login=true";
+    try {
+      const {error} = await supabase.auth.signOut();
+      if (error) throw error;
+
+      router.push("/?force_login=true");
+      router.refresh();
+    } catch (error) {
+      console.error("Error switching accocunt:", error);
+
+      window.location.href = "/?force_login=true"
+    }
   };
 
   if (loading) return (

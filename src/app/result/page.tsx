@@ -69,10 +69,10 @@ export default function ResultPage() {
     init ()
 
     const {data: listener} = supabase.auth.onAuthStateChange((_event, session) => {
-        if (!session) {
-            router.replace("/");
-        } else {
+        if (session) {
             setUserMeta(session.user?.user_metadata ?? null);
+        } else {
+            router.replace("/");
         }
     });
 

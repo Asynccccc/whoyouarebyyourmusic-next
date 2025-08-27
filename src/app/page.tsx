@@ -39,15 +39,22 @@ function LoginContent() {
       // Add a small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "spotify",
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           scopes: "user-top-read",
+          // Ensure PKCE is properly handled
+          skipBrowserRedirect: false,
         },
       });
       
       if (error) throw error;
+      
+      // If we get a URL, redirect manually (fallback)
+      if (data?.url) {
+        window.location.href = data.url;
+      }
       
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");

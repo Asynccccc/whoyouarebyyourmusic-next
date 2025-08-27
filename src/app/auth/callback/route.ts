@@ -7,6 +7,9 @@ export async function GET(request: Request) {
   const error = searchParams.get('error')
   const errorDescription = searchParams.get('error_description')
 
+  console.log('Callback received - Code:', code ? 'present' : 'missing')
+  console.log('Error:', error)
+
   // Handle OAuth errors
   if (error) {
     console.error('OAuth Error:', error, errorDescription)
@@ -20,7 +23,8 @@ export async function GET(request: Request) {
   // Handle successful authentication
   if (code) {
     try {
-      const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code)
+      console.log('Exchanging code for session...')
+      const { data, error: sessionError } = await supabase.auth.exchangeCodeForSession(code)
       
       if (sessionError) {
         console.error('Session exchange error:', sessionError)
@@ -29,11 +33,12 @@ export async function GET(request: Request) {
         return NextResponse.redirect(redirectUrl)
       }
 
+      console.log('Session exchange successful:', data)
       // Successful authentication - redirect to result page
       return NextResponse.redirect(new URL('/result', request.url))
       
     } catch (e) {
-      console.error('Unexpected error:', e)
+      console.error('Unexpected error in callback:', e)
       const redirectUrl = new URL('/', request.url)
       redirectUrl.searchParams.set('error', 'Unexpected authentication error')
       return NextResponse.redirect(redirectUrl)
@@ -41,5 +46,6 @@ export async function GET(request: Request) {
   }
 
   // No code or error - redirect home
+  console.log('No code or error in callback, redirecting home')
   return NextResponse.redirect(new URL('/', request.url))
 }

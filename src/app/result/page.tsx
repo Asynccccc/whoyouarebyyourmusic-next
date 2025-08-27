@@ -57,10 +57,19 @@ export default function ResultPage() {
 
                 const accessToken = session.provider_token;
                 if (!accessToken) throw new Error("Missing Spotify aaccess token. Please log in again");
+
+                await fetchSpotifyData(accessToken)
             }
         } catch (e) {
-            if (e instanceof Error) setError(e.message);
-            else setError("Unexpected error");
+            if (e instanceof Error) {
+                if (e.message.includes('rate limit') || e.message.includes('seconds')) {
+                    setError('Please wait a minute before trying again');
+                } else {
+                    setError(e.message);
+                }
+            } else {
+                setError('Unexpected errror');
+            }
         } finally {
             if (mounted) setLoading(false);
         }
@@ -71,6 +80,9 @@ export default function ResultPage() {
     const {data: listener} = supabase.auth.onAuthStateChange((_event, session) => {
         if (session) {
             setUserMeta(session.user?.user_metadata ?? null);
+            if (session.provider_token) {
+                fetchSpotifyData(session.provider_token);
+            }
         } else {
             router.replace("/");
         }
@@ -81,6 +93,39 @@ export default function ResultPage() {
         listener.subscription.unsubscribe();
     };
   }, [router]);
+
+  const fetchSpotifyData = async (accessToken: string) => {
+    try {
+        const artistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10', {
+            headers: { 'Authorization': `Bearer ${accessToken}`}
+        });
+        const artistsData = await artistsResponse.json();
+
+        if (artistsData.items) {
+            setArtists(artistsData.items.map((artists: SpotifyArtist) => ({
+                id: artists.id,
+                name: artists.name
+            })));
+        }
+
+        const tracksReponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=10', {
+            headers: { 'Authorization': `Bearer ${accessToken}`}
+        });
+        const tracksData = await tracksReponse.json();
+
+        if (tracksData.items) {
+            setTracks(tracksData.items.map((track: SpotifyTrack) => ({
+                id: track.id,
+                name: track.name,
+                artist: track.artists[0].name,
+                albumImage: track.album.images[0]?.url || ''
+            })));
+        }
+    } catch (error) {
+        console.error('Error fetching Spotify Data:', error);
+        setError('Failed to fetch your Spotify Data');
+    }
+  };
 
   const logOut = async () => {
     await supabase.auth.signOut();

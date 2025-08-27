@@ -10,6 +10,7 @@ import { Suspense } from 'react';
 function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [forceNewLogin, setForceNewLogin] = useState(false);
   const router = useRouter();
   
   // Get error from URL parameters if any
@@ -18,8 +19,17 @@ function LoginContent() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const errorParam = urlParams.get('error');
+      const forceLogin = urlParams.get('force_login');
+      
       if (errorParam) {
         setError(decodeURIComponent(errorParam));
+        // Clean the URL without causing navigation
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
+      
+      if (forceLogin) {
+        setForceNewLogin(true);
         // Clean the URL without causing navigation
         const newUrl = window.location.pathname;
         window.history.replaceState({}, '', newUrl);
@@ -39,12 +49,17 @@ function LoginContent() {
       // Add a small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // Clear any existing session to ensure fresh login
+      if (forceNewLogin) {
+        await supabase.auth.signOut();
+      }
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "spotify",
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           scopes: "user-top-read",
-          // Ensure PKCE is properly handled
+          // This parameter ensures Spotify shows account selector
           skipBrowserRedirect: false,
         },
       });
@@ -68,6 +83,13 @@ function LoginContent() {
       <h1 className="font-black text-2xl sm:text-3xl md:text-4xl leading-tight">
         Discover <span className="bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">who you are</span> by your <span className="underline decoration-dashed">music</span> taste
       </h1>
+      
+      {forceNewLogin && (
+        <div className="mt-4 p-4 bg-blue-100/10 border border-blue-400/40 text-blue-300 rounded-lg text-sm md:text-base">
+          <p className="font-semibold">Select Account</p>
+          <p className="text-sm mt-1">Please select your Spotify account or log in with a different account.</p>
+        </div>
+      )}
       
       {error && (
         <div className="mt-4 p-4 bg-red-100/10 border border-red-400/40 text-red-300 rounded-lg text-sm md:text-base">

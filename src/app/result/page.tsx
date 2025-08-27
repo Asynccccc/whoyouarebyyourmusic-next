@@ -164,8 +164,19 @@ export default function ResultPage() {
   };
 
   const logOut = async () => {
+    // Clear the session completely
     await supabase.auth.signOut();
-    router.replace("/");
+    
+    // Force a full page reload to clear any cached state
+    window.location.href = "/?force_login=true";
+  };
+
+  const switchAccount = async () => {
+    // Clear the session completely
+    await supabase.auth.signOut();
+    
+    // Add a parameter to indicate we want to force account selection
+    window.location.href = "/?force_login=true";
   };
 
   if (loading) return (
@@ -184,7 +195,10 @@ export default function ResultPage() {
         <div className="text-4xl mb-4">😢</div>
         <h2 className="text-xl sm:text-2xl font-bold mb-2">Oops! Something went wrong</h2>
         <p className="text-xs sm:text-sm mb-6 bg-white/10 p-4 rounded-lg">{error}</p>
-        <button onClick={logOut} className="bg-white text-black px-6 py-2 rounded-full font-semibold hover:bg-gray-200 transition text-sm sm:text-base">
+        <button onClick={switchAccount} className="bg-white text-black px-6 py-2 rounded-full font-semibold hover:bg-gray-200 transition text-sm sm:text-base mr-2">
+          Try Different Account
+        </button>
+        <button onClick={logOut} className="bg-white/10 text-white px-6 py-2 rounded-full font-semibold hover:bg-white/20 transition text-sm sm:text-base">
           Go Back
         </button>
       </div>
@@ -221,6 +235,12 @@ export default function ResultPage() {
               <p className="text-xs sm:text-sm text-gray-400 mt-2 sm:mt-3 text-center">
                 Signed in as <span className="font-semibold text-white">{userMeta?.name ?? "Spotify user"}</span>
               </p>
+              <button 
+                onClick={switchAccount}
+                className="mt-2 text-xs text-blue-400 hover:text-blue-300 underline"
+              >
+                Not you? Switch account
+              </button>
             </div>
             
             <div className="flex-1">
@@ -276,8 +296,14 @@ export default function ResultPage() {
           </div>
         </section>
 
-        {/* Logout Button */}
-        <div className="text-center">
+        {/* Action Buttons */}
+        <div className="text-center space-y-3 sm:space-y-0 sm:space-x-4">
+          <button 
+            onClick={switchAccount} 
+            className="bg-white/10 hover:bg-white/20 text-white px-6 py-2 sm:px-8 sm:py-3 rounded-full font-semibold transition backdrop-blur-lg border border-white/10 text-sm sm:text-base"
+          >
+            Switch Spotify Account
+          </button>
           <button 
             onClick={logOut} 
             className="bg-white/10 hover:bg-white/20 text-white px-6 py-2 sm:px-8 sm:py-3 rounded-full font-semibold transition backdrop-blur-lg border border-white/10 text-sm sm:text-base"

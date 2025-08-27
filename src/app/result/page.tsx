@@ -48,7 +48,7 @@ export default function ResultPage() {
             if (error) throw error;
 
             if (!session) {
-                router.replace("/");
+                console.log("No session yet, waiting for onAuthStateChange...")
                 return;
             }
 

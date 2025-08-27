@@ -64,13 +64,13 @@ function LoginContent() {
   };
 
   return (
-    <div className="text-center max-w-xl">
-      <h1 className="font-black text-3xl leading-tight">
+    <div className="text-center max-w-xl mx-4">
+      <h1 className="font-black text-2xl sm:text-3xl md:text-4xl leading-tight">
         Discover <span className="bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">who you are</span> by your <span className="underline decoration-dashed">music</span> taste
       </h1>
       
       {error && (
-        <div className="mt-4 p-4 bg-red-100/10 border border-red-400/40 text-red-300 rounded-lg">
+        <div className="mt-4 p-4 bg-red-100/10 border border-red-400/40 text-red-300 rounded-lg text-sm md:text-base">
           <p className="font-semibold">Authentication Error</p>
           <p className="text-sm mt-1">{error}</p>
           <p className="text-xs opacity-75 mt-2">
@@ -80,7 +80,7 @@ function LoginContent() {
       )}
       
       <button 
-        className="btn mt-5" 
+        className="btn mt-5 w-full sm:w-auto px-6 py-3 text-base" 
         onClick={login}
         disabled={loading || error.includes('seconds')}
       >
@@ -99,7 +99,7 @@ function LoginContent() {
 // Main page component with Suspense
 export default function Page() {
   return (
-    <main className="header-bg min-h-screen grid place-items-center p-6">
+    <main className="header-bg min-h-screen grid place-items-center p-4 sm:p-6">
       <Suspense fallback={
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>

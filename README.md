@@ -32,10 +32,10 @@ Follow these steps to get a local copy up and running.
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/whoyouarebyyourmusic.git
+git clone https://github.com/Asynccccc/whoyouarebyyourmusic-next.git
 
 # Navigate into the project directory
-cd whoyouarebyyourmusic
+cd whoyouarebyyourmusic-next
 
 # Install dependencies
 npm install

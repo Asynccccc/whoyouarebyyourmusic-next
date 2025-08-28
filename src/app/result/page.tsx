@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
-import { UserMetadata } from '@supabase/supabase-js';
+import { User, UserMetadata } from '@supabase/supabase-js';
 
 interface Artist {
     id: string;
@@ -32,6 +32,8 @@ interface SpotifyTrack {
 
 export default function ResultPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [user, setUser] = useState<User | null>(null);
   const [userMeta, setUserMeta] = useState<UserMetadata | null>(null);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -39,61 +41,102 @@ export default function ResultPage() {
   const [loading, setLoading] = useState(true);
   const [generatingAnalysis, setGeneratingAnalysis] = useState(false);
   const [error, setError] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  // Check for authentication errors in URL parameters
+  useEffect(() => {
+    const error = searchParams?.get('error');
+    const errorDescription = searchParams?.get('error_description');
+    
+    if (error) {
+      setAuthError(errorDescription || `Authentication error: ${error}`);
+      setLoading(false);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
-        try{
-            const { data: { session }, error } = await supabase.auth.getSession();
-            if (error) throw error;
-
-            if (!session) {
-                console.log("No session yet, waiting for onAuthStateChange...")
-                return;
-            }
-
-            if (mounted) {
-                setUserMeta(session.user?.user_metadata ?? null);
-
-                const accessToken = session.provider_token;
-                if (!accessToken) throw new Error("Missing Spotify access token. Please log in again");
-
-                await fetchSpotifyData(accessToken);
-            }
-        } catch (e) {
-            if (e instanceof Error) {
-                if (e.message.includes('rate limit') || e.message.includes('seconds')) {
-                    setError('Please wait a minute before trying again');
-                } else {
-                    setError(e.message);
-                }
-            } else {
-                setError('Unexpected error');
-            }
-        } finally {
-            if (mounted) setLoading(false);
+      try {
+        // First check for any authentication errors
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Session error:', sessionError);
+          setError('Authentication failed. Please try logging in again.');
+          setLoading(false);
+          return;
         }
+
+        if (!session) {
+          console.log("No session found, redirecting to login...");
+          router.replace("/");
+          return;
+        }
+
+        if (mounted) {
+          setUser(session.user);
+          setUserMeta(session.user?.user_metadata ?? null);
+
+          const accessToken = session.provider_token;
+          if (!accessToken) {
+            console.error('Missing Spotify access token');
+            setError('Missing authentication data. Please log in again.');
+            setLoading(false);
+            return;
+          }
+
+          await fetchSpotifyData(accessToken);
+        }
+      } catch (e) {
+        console.error('Initialization error:', e);
+        if (e instanceof Error) {
+          if (e.message.includes('rate limit') || e.message.includes('seconds')) {
+            setError('Please wait a minute before trying again');
+          } else {
+            setError(e.message);
+          }
+        } else {
+          setError('Unexpected error during authentication');
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
     };
 
-    init()
+    init();
 
-    const {data: listener} = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session) {
-            setUserMeta(session.user?.user_metadata ?? null);
-            if (session.provider_token) {
-                fetchSpotifyData(session.provider_token);
-            }
-        } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          setUser(session.user);
+          setUserMeta(session.user?.user_metadata ?? null);
+          
+          if (session.provider_token) {
+            await fetchSpotifyData(session.provider_token);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          // Only redirect if we're not in the process of logging out
+          if (!loggingOut) {
             router.replace("/");
+          }
+        } else if (event === 'USER_UPDATED') {
+          // Handle user profile updates
+          if (session) {
+            setUser(session.user);
+            setUserMeta(session.user?.user_metadata ?? null);
+          }
         }
-    });
+      }
+    );
 
     return () => {
-        mounted = false;
-        listener.subscription.unsubscribe();
+      mounted = false;
+      subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, loggingOut]);
 
   useEffect(() => {
     // Generate AI analysis when we have both artists and tracks
@@ -104,34 +147,66 @@ export default function ResultPage() {
 
   const fetchSpotifyData = async (accessToken: string) => {
     try {
-        const artistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10', {
-            headers: { 'Authorization': `Bearer ${accessToken}`}
-        });
-        const artistsData = await artistsResponse.json();
+      // First verify the token works by getting user profile
+      const profileResponse = await fetch('https://api.spotify.com/v1/me', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!profileResponse.ok) {
+        throw new Error('Failed to fetch Spotify profile - token may be invalid');
+      }
+      
+      const profileData = await profileResponse.json();
+      console.log('Spotify profile:', profileData);
 
-        if (artistsData.items) {
-            setArtists(artistsData.items.map((artist: SpotifyArtist) => ({
-                id: artist.id,
-                name: artist.name
-            })));
-        }
+      // Now fetch top artists
+      const artistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10&time_range=short_term', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!artistsResponse.ok) {
+        const errorText = await artistsResponse.text();
+        console.error('Artists API error:', artistsResponse.status, errorText);
+        throw new Error(`Spotify API error: ${artistsResponse.status} ${artistsResponse.statusText}`);
+      }
+      
+      const artistsData = await artistsResponse.json();
 
-        const tracksResponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=10', {
-            headers: { 'Authorization': `Bearer ${accessToken}`}
-        });
-        const tracksData = await tracksResponse.json();
+      if (artistsData.items) {
+        setArtists(artistsData.items.map((artist: SpotifyArtist) => ({
+          id: artist.id,
+          name: artist.name
+        })));
+      }
 
-        if (tracksData.items) {
-            setTracks(tracksData.items.map((track: SpotifyTrack) => ({
-                id: track.id,
-                name: track.name,
-                artist: track.artists[0].name,
-                albumImage: track.album.images[0]?.url || ''
-            })));
-        }
+      // Fetch top tracks
+      const tracksResponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=10&time_range=short_term', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!tracksResponse.ok) {
+        const errorText = await tracksResponse.text();
+        console.error('Tracks API error:', tracksResponse.status, errorText);
+        throw new Error(`Spotify API error: ${tracksResponse.status} ${tracksResponse.statusText}`);
+      }
+      
+      const tracksData = await tracksResponse.json();
+
+      if (tracksData.items) {
+        setTracks(tracksData.items.map((track: SpotifyTrack) => ({
+          id: track.id,
+          name: track.name,
+          artist: track.artists[0].name,
+          albumImage: track.album.images[0]?.url || ''
+        })));
+      }
     } catch (error) {
-        console.error('Error fetching Spotify Data:', error);
-        setError('Failed to fetch your Spotify Data');
+      console.error('Error fetching Spotify Data:', error);
+      if (error instanceof Error) {
+        setError(`Failed to fetch your Spotify data: ${error.message}`);
+      } else {
+        setError('Failed to fetch your Spotify data. Please try logging in again.');
+      }
     }
   };
 
@@ -163,34 +238,111 @@ export default function ResultPage() {
     }
   };
 
+  const clearAllStorage = () => {
+    // Clear all possible storage mechanisms
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Clear Supabase storage specifically
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('supabase.')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      // Clear cookies
+      document.cookie.split(";").forEach(function(c) {
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+    }
+  };
+
   const logOut = async () => {
     try {
-    // Clear the session completely
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-
-    router.push("/");
-    router.refresh();     
+      setLoggingOut(true);
+      
+      // Clear all storage first
+      clearAllStorage();
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      // Force a complete reload to reset all state
+      window.location.href = "/?logout=true&t=" + new Date().getTime();
     } catch (error) {
-      console.error('Error logging out:', error);
-      window.location.href = "/";
+      console.error('Error during logout:', error);
+      // Fallback: force reload anyway
+      window.location.href = "/?logout=true&t=" + new Date().getTime();
     }
-    
   };
 
   const switchAccount = async () => {
     try {
-      const {error} = await supabase.auth.signOut();
+      setLoggingOut(true);
+      
+      // Clear all storage first
+      clearAllStorage();
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
       if (error) throw error;
-
-      router.push("/?force_login=true");
-      router.refresh();
+      
+      // Force a complete reload to reset all state
+      window.location.href = "/?force_login=true&t=" + new Date().getTime();
     } catch (error) {
-      console.error("Error switching accocunt:", error);
-
-      window.location.href = "/?force_login=true"
+      console.error('Error during account switch:', error);
+      // Fallback: force reload anyway
+      window.location.href = "/?force_login=true&t=" + new Date().getTime();
     }
   };
+
+  const retryAuthentication = () => {
+    // Clear errors and restart authentication
+    setError("");
+    setAuthError("");
+    clearAllStorage();
+    window.location.href = "/?force_login=true&retry=true&t=" + new Date().getTime();
+  };
+
+  // Show authentication error if present
+  if (authError) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black grid place-items-center p-4 sm:p-6">
+        <div className="text-center text-white max-w-md mx-4">
+          <div className="text-4xl mb-4">🔐</div>
+          <h2 className="text-xl sm:text-2xl font-bold mb-2">Authentication Error</h2>
+          <p className="text-sm sm:text-base mb-6 bg-white/10 p-4 rounded-lg">{authError}</p>
+          <div className="space-y-3 sm:space-y-0 sm:space-x-4">
+            <button onClick={retryAuthentication} className="bg-white text-black px-6 py-2 rounded-full font-semibold hover:bg-gray-200 transition text-sm sm:text-base">
+              Try Again
+            </button>
+            <button onClick={() => window.location.href = "/"} className="bg-white/10 text-white px-6 py-2 rounded-full font-semibold hover:bg-white/20 transition text-sm sm:text-base">
+              Go Home
+            </button>
+          </div>
+          <div className="mt-6 text-xs text-gray-400">
+            <p>If this continues, please check that:</p>
+            <ul className="list-disc list-inside text-left mt-2">
+              <li>Your Spotify app settings include the correct redirect URIs</li>
+              <li>You've granted all required permissions</li>
+            </ul>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (loggingOut) return (
+    <main className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black grid place-items-center p-4 sm:p-6">
+      <div className="text-center text-white max-w-xs sm:max-w-sm">
+        <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-white mx-auto mb-4"></div>
+        <h2 className="text-xl sm:text-2xl font-bold mb-2">Logging out...</h2>
+        <p className="text-sm opacity-80">Please wait while we sign you out</p>
+      </div>
+    </main>
+  );
 
   if (loading) return (
     <main className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black grid place-items-center p-4 sm:p-6">
